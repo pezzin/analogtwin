@@ -31,7 +31,7 @@ const initialRows: PanelRowType[] = [
   { id: 'r14', type: 'breakers', label: 'Linea P', items: [1, 1, 1, 0, 1, 1] },
   { id: 'r15', type: 'breakers', label: 'Linea Q', items: [0, 1, 1, 1, 1, 0] },
   { id: 'gauge-1', type: 'gauge', label: 'Amperometro', unit: 'A', min: 0, max: 500, value: 340 },
-  { id: 'blank-5', type: 'blank' },
+  { id: 'gauge-2', type: 'gauge', label: 'Voltmetro', unit: 'V', min: 0, max: 480, value: 398 },
   { id: 'blank-6', type: 'blank' },
   { id: 'r18', type: 'breakers', label: 'Linea T', items: [1, 1, 1, 1, 0, 0] },
   { id: 'r19', type: 'breakers', label: 'Linea U', items: [1, 1, 0, 1, 1, 0] },
@@ -48,7 +48,7 @@ const initialRows: PanelRowType[] = [
 const columns = [
   ['main-switch', 'r1', 'r2', 'r3', 'r4', 'r5', 'blank-1', 'blank-2'],
   ['r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'blank-3', 'blank-4'],
-  ['r12', 'r13', 'r14', 'r15', 'gauge-1', 'blank-5', 'blank-6'],
+  ['r12', 'r13', 'r14', 'r15', 'gauge-1', 'gauge-2', 'blank-6'],
   ['r18', 'r19', 'aux-panel', 'blank-7', 'blank-8'],
 ]
 
@@ -64,6 +64,8 @@ const initialLogs = [
 type RowState = { status: 'on' | 'off' } | { items: number[] }
 type StatesMap = Record<string, RowState>
 
+type GaugeAlert = { condition: 'above' | 'below'; threshold: number }
+
 function buildInitialStates(rows: PanelRowType[]): StatesMap {
   const map: StatesMap = {}
   for (const row of rows) {
@@ -78,6 +80,7 @@ export default function AnalogTwinDashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupId, setPopupId] = useState<string | null>(null)
   const [alertedIds, setAlertedIds] = useState<Set<string>>(new Set())
+  const [gaugeAlerts, setGaugeAlerts] = useState<Record<string, GaugeAlert>>({})
   const [liveImageOpen, setLiveImageOpen] = useState(false)
   const [logs] = useState<string[]>(initialLogs)
 
@@ -95,6 +98,22 @@ export default function AnalogTwinDashboard() {
       else next.add(id)
       return next
     })
+  }
+
+  function setGaugeAlert(id: string, alert: GaugeAlert | null) {
+    setGaugeAlerts((prev) => {
+      const next = { ...prev }
+      if (alert === null) delete next[id]
+      else next[id] = alert
+      return next
+    })
+  }
+
+  function isGaugeInViolation(id: string): boolean {
+    const row = rowMap[id]
+    const alert = gaugeAlerts[id]
+    if (!alert || !row || row.type !== 'gauge') return false
+    return alert.condition === 'above' ? row.value > alert.threshold : row.value < alert.threshold
   }
 
   function getComponentInfo(id: string) {
@@ -132,7 +151,8 @@ export default function AnalogTwinDashboard() {
   }
 
   const selected = selectedId ? getComponentInfo(selectedId) : null
-  const activeAlerts = alertedIds.size
+  const activeAlerts = alertedIds.size + Object.keys(gaugeAlerts).length
+  const activeViolations = Object.keys(gaugeAlerts).filter(isGaugeInViolation).length
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
@@ -216,6 +236,10 @@ export default function AnalogTwinDashboard() {
         const info = getComponentInfo(popupId)
         if (!info) return null
         const hasAlert = alertedIds.has(popupId)
+        const popupRow = rowMap[popupId]
+        const isGauge = popupRow?.type === 'gauge'
+        const gaugeAlert = gaugeAlerts[popupId]
+        const inViolation = isGaugeInViolation(popupId)
         return (
           <div
             className="fixed inset-0 z-40 flex items-center justify-center bg-black/30"
@@ -253,9 +277,21 @@ export default function AnalogTwinDashboard() {
                     <span className="text-sm font-semibold text-zinc-900">{info.detail}</span>
                   </div>
                 )}
+                {inViolation && (
+                  <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <span className="text-sm font-semibold text-red-600">⚠ Soglia superata</span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 border-t border-zinc-100 pt-4">
+                {isGauge ? (
+                  <GaugeAlertConfig
+                    row={popupRow as { type: 'gauge'; unit: string; min: number; max: number; value: number }}
+                    alert={gaugeAlert ?? null}
+                    onChange={(a) => setGaugeAlert(popupId, a)}
+                  />
+                ) : (
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-zinc-900">Allarme variazione stato</p>
@@ -276,6 +312,7 @@ export default function AnalogTwinDashboard() {
                     />
                   </button>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -376,7 +413,8 @@ export default function AnalogTwinDashboard() {
                                 row={row}
                                 state={state}
                                 isSelected={selectedId === id}
-                                hasAlert={alertedIds.has(id)}
+                                hasAlert={alertedIds.has(id) || !!gaugeAlerts[id]}
+                                inViolation={isGaugeInViolation(id)}
                                 onOpen={() => openPopup(id)}
                               />
                             )
@@ -445,9 +483,9 @@ export default function AnalogTwinDashboard() {
               </div>
 
               {activeAlerts > 0 && (
-                <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                  <p className="text-sm font-semibold text-amber-800">
-                    {activeAlerts} allarme{activeAlerts > 1 ? 'i' : ''} configurato{activeAlerts > 1 ? 'i' : ''}
+                <div className={`mt-5 rounded-2xl border p-5 shadow-sm ${activeViolations > 0 ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <p className={`text-sm font-semibold ${activeViolations > 0 ? 'text-red-800' : 'text-amber-800'}`}>
+                    {activeViolations > 0 ? `⚠ ${activeViolations} soglia superata` : `${activeAlerts} allarme${activeAlerts > 1 ? 'i' : ''} configurato${activeAlerts > 1 ? 'i' : ''}`}
                   </p>
                   <div className="mt-3 space-y-2">
                     {Array.from(alertedIds).map((id) => {
@@ -456,12 +494,21 @@ export default function AnalogTwinDashboard() {
                       return (
                         <div key={id} className="flex items-center justify-between rounded-lg bg-white border border-amber-100 px-3 py-2">
                           <span className="text-sm text-zinc-700">{info.name}</span>
-                          <button
-                            onClick={() => toggleAlert(id)}
-                            className="text-xs text-amber-600 hover:text-amber-800"
-                          >
-                            Rimuovi
-                          </button>
+                          <button onClick={() => toggleAlert(id)} className="text-xs text-amber-600 hover:text-amber-800">Rimuovi</button>
+                        </div>
+                      )
+                    })}
+                    {Object.entries(gaugeAlerts).map(([id, alert]) => {
+                      const info = getComponentInfo(id)
+                      if (!info) return null
+                      const violation = isGaugeInViolation(id)
+                      return (
+                        <div key={id} className={`flex items-center justify-between rounded-lg border px-3 py-2 ${violation ? 'bg-red-50 border-red-200' : 'bg-white border-amber-100'}`}>
+                          <div>
+                            <span className="text-sm text-zinc-700">{info.name}</span>
+                            <p className="text-xs text-zinc-400">{alert.condition === 'above' ? 'Sopra' : 'Sotto'} {alert.threshold} {(rowMap[id] as { unit?: string }).unit ?? ''}</p>
+                          </div>
+                          <button onClick={() => setGaugeAlert(id, null)} className="text-xs text-amber-600 hover:text-amber-800">Rimuovi</button>
                         </div>
                       )
                     })}
@@ -520,17 +567,19 @@ function PanelRow({
   state,
   isSelected,
   hasAlert,
+  inViolation,
   onOpen,
 }: {
   row: PanelRowType
   state: RowState | undefined
   isSelected: boolean
   hasAlert: boolean
+  inViolation: boolean
   onOpen: () => void
 }) {
   const ring = isSelected ? 'ring-2 ring-blue-500' : ''
   const alertDot = hasAlert ? (
-    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-400 border border-white" />
+    <span className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border border-white ${inViolation ? 'bg-red-500 animate-pulse' : 'bg-amber-400'}`} />
   ) : null
 
   if (row.type === 'main-switch') {
@@ -630,6 +679,66 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
       <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
       <p className="mt-1 text-lg font-semibold text-zinc-900">{value}</p>
+    </div>
+  )
+}
+
+function GaugeAlertConfig({
+  row,
+  alert,
+  onChange,
+}: {
+  row: { unit: string; min: number; max: number; value: number }
+  alert: GaugeAlert | null
+  onChange: (a: GaugeAlert | null) => void
+}) {
+  const [condition, setCondition] = useState<'above' | 'below'>(alert?.condition ?? 'above')
+  const [threshold, setThreshold] = useState<string>(alert ? String(alert.threshold) : '')
+
+  function save() {
+    const v = parseFloat(threshold)
+    if (!isNaN(v)) onChange({ condition, threshold: v })
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-medium text-zinc-900">Allarme soglia</p>
+        {alert && (
+          <button onClick={() => onChange(null)} className="text-xs text-red-500 hover:text-red-700">Rimuovi</button>
+        )}
+      </div>
+      <div className="flex gap-2 mb-3">
+        {(['above', 'below'] as const).map((c) => (
+          <button
+            key={c}
+            onClick={() => setCondition(c)}
+            className={`flex-1 rounded-lg border py-1.5 text-xs font-medium transition ${condition === c ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-zinc-200 text-zinc-500 hover:bg-zinc-50'}`}
+          >
+            {c === 'above' ? 'Sopra soglia' : 'Sotto soglia'}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          value={threshold}
+          onChange={(e) => setThreshold(e.target.value)}
+          placeholder={`Valore in ${row.unit}`}
+          className="flex-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <button
+          onClick={save}
+          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Salva
+        </button>
+      </div>
+      {alert && (
+        <p className="mt-2 text-xs text-zinc-400">
+          Allarme attivo se valore {alert.condition === 'above' ? 'supera' : 'scende sotto'} {alert.threshold} {row.unit}
+        </p>
+      )}
     </div>
   )
 }
