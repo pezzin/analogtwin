@@ -23,12 +23,17 @@ export async function POST(req: Request) {
     auth: { user, pass },
   })
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? user,
-    to: recipients.join(', '),
-    subject,
-    html: body,
-  })
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM ?? user,
+      to: recipients.join(', '),
+      subject,
+      html: body,
+    })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'SMTP error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

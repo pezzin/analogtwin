@@ -70,8 +70,10 @@ export default function SettingsPage() {
         }),
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? 'Errore sconosciuto')
+        const text = await res.text()
+        let message = 'Errore sconosciuto'
+        try { message = JSON.parse(text).error ?? message } catch { message = text || message }
+        throw new Error(message)
       }
       setTestStatus('ok')
     } catch (e) {
