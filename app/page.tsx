@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 type PanelRowType =
   | { id: string; type: 'main-switch'; label: string; status: 'on' | 'off' }
@@ -82,7 +83,8 @@ export default function AnalogTwinDashboard() {
   const [alertedIds, setAlertedIds] = useState<Set<string>>(new Set())
   const [gaugeAlerts, setGaugeAlerts] = useState<Record<string, GaugeAlert>>({})
   const [liveImageOpen, setLiveImageOpen] = useState(false)
-  const [logs] = useState<string[]>(initialLogs)
+  const [logs, setLogs] = useState<string[]>(initialLogs)
+  const firedAlerts = useRef<Set<string>>(new Set())
 
   const rowMap = Object.fromEntries(initialRows.map((r) => [r.id, r]))
 
@@ -153,6 +155,45 @@ export default function AnalogTwinDashboard() {
   const selected = selectedId ? getComponentInfo(selectedId) : null
   const activeAlerts = alertedIds.size + Object.keys(gaugeAlerts).length
   const activeViolations = Object.keys(gaugeAlerts).filter(isGaugeInViolation).length
+
+  useEffect(() => {
+    const recipients: string[] = JSON.parse(localStorage.getItem('analogtwin_recipients') ?? '[]')
+    if (recipients.length === 0) return
+
+    Object.keys(gaugeAlerts).forEach((id) => {
+      const violating = isGaugeInViolation(id)
+      if (violating && !firedAlerts.current.has(id)) {
+        firedAlerts.current.add(id)
+        const row = rowMap[id] as { type: 'gauge'; label: string; unit: string; value: number }
+        const alert = gaugeAlerts[id]
+        const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        setLogs((prev) => [`${now} - ALLARME: ${row.label} → ${row.value} ${row.unit}`, ...prev].slice(0, 20))
+        fetch('/api/send-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipients,
+            subject: `[AnalogTwin] Allarme: ${row.label} soglia superata`,
+            body: `
+              <div style="font-family:sans-serif;max-width:480px">
+                <h2 style="color:#dc2626">⚠ Allarme AnalogTwin</h2>
+                <p><strong>${row.label}</strong> ha superato la soglia configurata.</p>
+                <table style="width:100%;border-collapse:collapse;margin-top:16px">
+                  <tr><td style="padding:8px;color:#71717a">Componente</td><td style="padding:8px;font-weight:600">${row.label}</td></tr>
+                  <tr style="background:#f4f4f5"><td style="padding:8px;color:#71717a">Valore attuale</td><td style="padding:8px;font-weight:600">${row.value} ${row.unit}</td></tr>
+                  <tr><td style="padding:8px;color:#71717a">Condizione</td><td style="padding:8px;font-weight:600">${alert.condition === 'above' ? 'Sopra' : 'Sotto'} ${alert.threshold} ${row.unit}</td></tr>
+                  <tr style="background:#f4f4f5"><td style="padding:8px;color:#71717a">Orario</td><td style="padding:8px;font-weight:600">${now}</td></tr>
+                </table>
+                <p style="margin-top:16px;color:#71717a;font-size:13px">Accedi alla dashboard per maggiori dettagli.</p>
+              </div>
+            `,
+          }),
+        })
+      } else if (!violating) {
+        firedAlerts.current.delete(id)
+      }
+    })
+  }, [gaugeAlerts, rowMap])
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
@@ -349,7 +390,7 @@ export default function AnalogTwinDashboard() {
               <SidebarItem label="Dashboard" />
               <SidebarItem label="Allarmi" badge={activeAlerts > 0 ? activeAlerts : undefined} />
               <SidebarItem label="Test / Simulazione" />
-              <SidebarItem label="Settings" />
+              <Link href="/settings" className="flex w-full items-center rounded-xl px-4 py-3 text-left text-[15px] text-slate-200 hover:bg-slate-800/60 transition">Settings</Link>
             </div>
           </nav>
         </aside>
