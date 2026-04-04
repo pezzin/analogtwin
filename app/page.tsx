@@ -54,7 +54,7 @@ const columns = [
 
 const columnWidths = ['w-[210px]', 'w-[210px]', 'w-[210px]', 'w-[210px]']
 
-const logs = [
+const initialLogs = [
   '10:42 - Interruttore 1 → ON',
   '10:40 - Linea C → livello 62%',
   '10:37 - Quadro BT Linea 1 → heartbeat ok',
@@ -74,34 +74,33 @@ function buildInitialStates(rows: PanelRowType[]): StatesMap {
 }
 
 export default function AnalogTwinDashboard() {
-  const [states, setStates] = useState<StatesMap>(() => buildInitialStates(initialRows))
-  const [selectedId, setSelectedId] = useState<string | null>('main-switch')
+  const [states] = useState<StatesMap>(() => buildInitialStates(initialRows))
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [popupId, setPopupId] = useState<string | null>(null)
+  const [alertedIds, setAlertedIds] = useState<Set<string>>(new Set())
+  const [liveImageOpen, setLiveImageOpen] = useState(false)
+  const [logs] = useState<string[]>(initialLogs)
 
   const rowMap = Object.fromEntries(initialRows.map((r) => [r.id, r]))
 
-  function toggleMainSwitch(id: string) {
-    setStates((prev) => {
-      const current = prev[id] as { status: 'on' | 'off' }
-      return { ...prev, [id]: { status: current.status === 'on' ? 'off' : 'on' } }
-    })
+  function openPopup(id: string) {
     setSelectedId(id)
+    setPopupId(id)
   }
 
-  function toggleBreaker(rowId: string, idx: number) {
-    setStates((prev) => {
-      const current = prev[rowId] as { items: number[] }
-      const newItems = [...current.items]
-      newItems[idx] = newItems[idx] ? 0 : 1
-      return { ...prev, [rowId]: { items: newItems } }
+  function toggleAlert(id: string) {
+    setAlertedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
-    setSelectedId(rowId)
   }
 
-  function getSelectedInfo() {
-    if (!selectedId) return null
-    const row = rowMap[selectedId]
+  function getComponentInfo(id: string) {
+    const row = rowMap[id]
     if (!row || row.type === 'blank') return null
-    const state = states[selectedId]
+    const state = states[id]
 
     if (row.type === 'main-switch') {
       const s = state as { status: 'on' | 'off' }
@@ -113,7 +112,7 @@ export default function AnalogTwinDashboard() {
       return {
         name: row.label,
         type: 'Gruppo interruttori',
-        status: active > 0 ? 'PARZIALE' : 'OFF',
+        status: active === s.items.length ? 'ON' : active === 0 ? 'OFF' : 'PARZIALE',
         detail: `${active} / ${s.items.length} attivi`,
       }
     }
@@ -123,10 +122,157 @@ export default function AnalogTwinDashboard() {
     return null
   }
 
-  const selected = getSelectedInfo()
+  const selected = selectedId ? getComponentInfo(selectedId) : null
+  const activeAlerts = alertedIds.size
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
+      {/* Live image modal */}
+      {liveImageOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setLiveImageOpen(false)}
+        >
+          <div
+            className="relative w-[720px] rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Camera live</p>
+                <p className="mt-1 text-lg font-semibold text-white">Quadro BT – Linea 1</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Aggiornato 42s fa
+                </span>
+                <button
+                  onClick={() => setLiveImageOpen(false)}
+                  className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700"
+                >
+                  Chiudi
+                </button>
+              </div>
+            </div>
+
+            {/* Fake camera image */}
+            <div className="relative h-[400px] w-full overflow-hidden rounded-xl bg-zinc-800">
+              <div className="absolute inset-0 flex items-center justify-center">
+                {/* Simulated panel view */}
+                <div className="grid w-[560px] grid-cols-4 gap-3 opacity-80">
+                  {Array.from({ length: 4 }).map((_, ci) => (
+                    <div key={ci} className="rounded border border-zinc-600 bg-zinc-700 p-2">
+                      <div className="mb-2 h-2 rounded bg-emerald-600 opacity-70" />
+                      {Array.from({ length: 5 }).map((_, ri) => (
+                        <div key={ri} className="mb-1.5 flex gap-1">
+                          {Array.from({ length: 6 }).map((_, bi) => (
+                            <div
+                              key={bi}
+                              className={`h-4 flex-1 rounded-sm ${Math.random() > 0.3 ? 'bg-emerald-500' : 'bg-zinc-500'} opacity-90`}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Camera overlay */}
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute top-3 left-3 text-[10px] font-mono text-emerald-400 opacity-70">
+                  CAM-01 • 10:42:18 • 1920×1080
+                </div>
+                <div className="absolute top-3 right-3 h-3 w-3 rounded-full border border-red-500 bg-red-500 opacity-80 animate-pulse" />
+                <div className="absolute bottom-3 left-3 text-[10px] font-mono text-zinc-400">
+                  QUADRO BT – LINEA 1 • AI VISION ACTIVE
+                </div>
+                {/* Corner marks */}
+                <div className="absolute top-6 left-6 h-5 w-5 border-t-2 border-l-2 border-emerald-500 opacity-50" />
+                <div className="absolute top-6 right-6 h-5 w-5 border-t-2 border-r-2 border-emerald-500 opacity-50" />
+                <div className="absolute bottom-6 left-6 h-5 w-5 border-b-2 border-l-2 border-emerald-500 opacity-50" />
+                <div className="absolute bottom-6 right-6 h-5 w-5 border-b-2 border-r-2 border-emerald-500 opacity-50" />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-zinc-500">
+              Immagine acquisita ogni 60s dalla camera HD. L&apos;AI analizza lo stato degli interruttori e aggiorna il DB in tempo reale.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Component popup */}
+      {popupId && (() => {
+        const info = getComponentInfo(popupId)
+        if (!info) return null
+        const hasAlert = alertedIds.has(popupId)
+        return (
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/30"
+            onClick={() => setPopupId(null)}
+          >
+            <div
+              className="w-80 rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">{info.type}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-zinc-900">{info.name}</h3>
+                </div>
+                <button
+                  onClick={() => setPopupId(null)}
+                  className="text-zinc-400 hover:text-zinc-700 text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
+                  <span className="text-sm text-zinc-500">Stato</span>
+                  <span className={`text-sm font-bold ${
+                    info.status === 'ON' ? 'text-emerald-600' :
+                    info.status === 'OFF' ? 'text-red-500' :
+                    'text-amber-500'
+                  }`}>{info.status}</span>
+                </div>
+                {info.detail && (
+                  <div className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
+                    <span className="text-sm text-zinc-500">Dettaglio</span>
+                    <span className="text-sm font-semibold text-zinc-900">{info.detail}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 border-t border-zinc-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900">Allarme variazione stato</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {hasAlert ? 'Notifica attiva se lo stato cambia' : 'Nessuna notifica configurata'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleAlert(popupId)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      hasAlert ? 'bg-emerald-500' : 'bg-zinc-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        hasAlert ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="flex min-h-screen">
         <aside className="w-72 border-r border-zinc-800 bg-slate-900 text-white">
           <div className="border-b border-slate-700 px-6 py-5">
@@ -155,7 +301,7 @@ export default function AnalogTwinDashboard() {
 
             <div className="mt-8 space-y-2 text-[15px]">
               <SidebarItem label="Dashboard" />
-              <SidebarItem label="Allarmi" />
+              <SidebarItem label="Allarmi" badge={activeAlerts > 0 ? activeAlerts : undefined} />
               <SidebarItem label="Test / Simulazione" />
               <SidebarItem label="Settings" />
             </div>
@@ -173,8 +319,13 @@ export default function AnalogTwinDashboard() {
             </div>
 
             <div className="flex items-center gap-3">
-              <button className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium">LIVE</button>
-              <button className="rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-2 text-sm font-medium text-zinc-500">SIMULATION</button>
+              <button
+                onClick={() => setLiveImageOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 transition"
+              >
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                Check live image
+              </button>
               <div className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500">
                 <span className="inline-block h-3 w-3 rounded-full bg-emerald-500" />
                 Online
@@ -191,7 +342,7 @@ export default function AnalogTwinDashboard() {
                     <h2 className="mt-1 text-xl font-semibold">Front view quadro elettrico</h2>
                   </div>
                   <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-600">
-                    Interazione componenti attiva
+                    Sola lettura · clicca per dettagli
                   </div>
                 </div>
 
@@ -216,9 +367,8 @@ export default function AnalogTwinDashboard() {
                                 row={row}
                                 state={state}
                                 isSelected={selectedId === id}
-                                onSelect={() => setSelectedId(id)}
-                                onToggleMainSwitch={() => toggleMainSwitch(id)}
-                                onToggleBreaker={(idx) => toggleBreaker(id, idx)}
+                                hasAlert={alertedIds.has(id)}
+                                onOpen={() => openPopup(id)}
                               />
                             )
                           })}
@@ -241,8 +391,8 @@ export default function AnalogTwinDashboard() {
                 </div>
 
                 <div className="grid gap-3 text-sm text-zinc-700">
-                  {logs.map((log) => (
-                    <div key={log} className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  {logs.map((log, i) => (
+                    <div key={i} className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
                       {log}
                     </div>
                   ))}
@@ -250,7 +400,7 @@ export default function AnalogTwinDashboard() {
               </div>
             </section>
 
-            <aside className="border-l border-zinc-200 bg-white p-6">
+            <aside className="border-l border-zinc-200 bg-white p-6 overflow-y-auto">
               <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-5 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Componente selezionato</p>
                 {selected ? (
@@ -263,29 +413,58 @@ export default function AnalogTwinDashboard() {
                         label="Stato"
                         value={selected.status}
                         good={selected.status === 'ON' || selected.status === 'PARZIALE'}
+                        bad={selected.status === 'OFF'}
                       />
                       {selected.detail && <InfoRow label="Dettaglio" value={selected.detail} />}
+                      <InfoRow
+                        label="Allarme"
+                        value={selectedId && alertedIds.has(selectedId) ? 'Attivo' : 'Non configurato'}
+                        good={!!(selectedId && alertedIds.has(selectedId))}
+                      />
                     </div>
 
-                    <div className="mt-6 grid grid-cols-2 gap-3">
-                      <button className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
-                        ON
-                      </button>
-                      <button className="rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700">
-                        OFF
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => selectedId && setPopupId(selectedId)}
+                      className="mt-5 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                    >
+                      Gestisci allarme
+                    </button>
                   </>
                 ) : (
-                  <p className="mt-4 text-sm text-zinc-400">Nessun componente selezionato</p>
+                  <p className="mt-4 text-sm text-zinc-400">Clicca un componente sul quadro per vedere i dettagli.</p>
                 )}
               </div>
+
+              {activeAlerts > 0 && (
+                <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                  <p className="text-sm font-semibold text-amber-800">
+                    {activeAlerts} allarme{activeAlerts > 1 ? 'i' : ''} configurato{activeAlerts > 1 ? 'i' : ''}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {Array.from(alertedIds).map((id) => {
+                      const info = getComponentInfo(id)
+                      if (!info) return null
+                      return (
+                        <div key={id} className="flex items-center justify-between rounded-lg bg-white border border-amber-100 px-3 py-2">
+                          <span className="text-sm text-zinc-700">{info.name}</span>
+                          <button
+                            onClick={() => toggleAlert(id)}
+                            className="text-xs text-amber-600 hover:text-amber-800"
+                          >
+                            Rimuovi
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 rounded-2xl border border-zinc-300 bg-white p-5 shadow-sm">
                 <p className="text-sm font-semibold">Metriche rapide</p>
                 <div className="mt-4 grid gap-3">
                   <MiniMetric label="Interruttori attivi" value="18 / 24" />
-                  <MiniMetric label="Allarmi attivi" value="1" />
+                  <MiniMetric label="Allarmi configurati" value={String(activeAlerts)} />
                   <MiniMetric label="Connessione" value="Stabile" />
                 </div>
               </div>
@@ -297,21 +476,24 @@ export default function AnalogTwinDashboard() {
   )
 }
 
-type SidebarItemProps = { label: string; active?: boolean }
+type SidebarItemProps = { label: string; active?: boolean; badge?: number }
 
-function SidebarItem({ label, active = false }: SidebarItemProps) {
+function SidebarItem({ label, active = false, badge }: SidebarItemProps) {
   return (
     <button
-      className={`flex w-full items-center rounded-xl px-4 py-3 text-left transition ${
+      className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${
         active ? 'bg-slate-800 font-semibold text-white' : 'text-slate-200 hover:bg-slate-800/60'
       }`}
     >
       {label}
+      {badge !== undefined && (
+        <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">{badge}</span>
+      )}
     </button>
   )
 }
 
-function SidebarSubItem({ label, active = false }: SidebarItemProps) {
+function SidebarSubItem({ label, active = false }: { label: string; active?: boolean }) {
   return (
     <button
       className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition ${
@@ -324,92 +506,100 @@ function SidebarSubItem({ label, active = false }: SidebarItemProps) {
   )
 }
 
+type RowState = { status: 'on' | 'off' } | { items: number[] }
+
 function PanelRow({
   row,
   state,
   isSelected,
-  onSelect,
-  onToggleMainSwitch,
-  onToggleBreaker,
+  hasAlert,
+  onOpen,
 }: {
   row: PanelRowType
   state: RowState | undefined
   isSelected: boolean
-  onSelect: () => void
-  onToggleMainSwitch: () => void
-  onToggleBreaker: (idx: number) => void
+  hasAlert: boolean
+  onOpen: () => void
 }) {
-  const selectedRing = isSelected ? 'ring-2 ring-blue-500' : ''
+  const ring = isSelected ? 'ring-2 ring-blue-500' : ''
+  const alertDot = hasAlert ? (
+    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-400 border border-white" />
+  ) : null
 
   if (row.type === 'main-switch') {
     const s = state as { status: 'on' | 'off' }
     return (
-      <button
-        onClick={onToggleMainSwitch}
-        className={`mb-4 flex h-24 w-full items-center justify-center rounded-md border border-zinc-500 bg-white transition hover:shadow-md ${selectedRing}`}
-      >
-        <div className="flex items-center gap-4">
-          <div className="h-14 w-10 rounded-full border-2 border-zinc-700 bg-zinc-100 p-1">
-            <div className={`mx-auto h-6 w-6 rounded-full ${s.status === 'on' ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+      <div className="relative mb-4">
+        {alertDot}
+        <button
+          onClick={onOpen}
+          className={`flex h-24 w-full items-center justify-center rounded-md border border-zinc-500 bg-white transition hover:shadow-md ${ring}`}
+        >
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-10 rounded-full border-2 border-zinc-700 bg-zinc-100 p-1">
+              <div className={`mx-auto h-6 w-6 rounded-full ${s.status === 'on' ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+            </div>
+            <div className="text-left">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Generale</p>
+              <p className="font-semibold text-zinc-900">{row.label}</p>
+              <p className={`text-xs font-bold ${s.status === 'on' ? 'text-emerald-600' : 'text-zinc-400'}`}>
+                {s.status.toUpperCase()}
+              </p>
+            </div>
           </div>
-          <div className="text-left">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Generale</p>
-            <p className="font-semibold text-zinc-900">{row.label}</p>
-            <p className={`text-xs font-bold ${s.status === 'on' ? 'text-emerald-600' : 'text-zinc-400'}`}>
-              {s.status.toUpperCase()}
-            </p>
-          </div>
-        </div>
-      </button>
+        </button>
+      </div>
     )
   }
 
   if (row.type === 'breakers') {
     const s = state as { items: number[] }
     return (
-      <div
-        onClick={onSelect}
-        className={`mb-4 block w-full rounded-md border border-zinc-500 bg-white px-3 py-2 cursor-pointer transition hover:shadow-md ${selectedRing}`}
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{row.label}</span>
-        </div>
-        <div className="flex gap-1">
-          {s.items.map((item, idx) => (
-            <button
-              key={idx}
-              onClick={(e) => { e.stopPropagation(); onToggleBreaker(idx) }}
-              className="flex h-8 flex-1 items-center justify-center rounded-sm border border-zinc-400 bg-zinc-50 transition hover:border-blue-400"
-            >
-              <div className={`h-5 w-3 rounded-sm transition ${item ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
-            </button>
-          ))}
-        </div>
+      <div className="relative mb-4">
+        {alertDot}
+        <button
+          onClick={onOpen}
+          className={`block w-full rounded-md border border-zinc-500 bg-white px-3 py-2 text-left transition hover:shadow-md ${ring}`}
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{row.label}</span>
+          </div>
+          <div className="flex gap-1">
+            {s.items.map((item, idx) => (
+              <div key={idx} className="flex h-8 flex-1 items-center justify-center rounded-sm border border-zinc-400 bg-zinc-50">
+                <div className={`h-5 w-3 rounded-sm ${item ? 'bg-emerald-500' : 'bg-zinc-300'}`} />
+              </div>
+            ))}
+          </div>
+        </button>
       </div>
     )
   }
 
   if (row.type === 'aux-panel') {
     return (
-      <button
-        onClick={onSelect}
-        className={`mb-4 flex h-80 w-full items-center justify-center rounded-md border-2 border-red-400 bg-white p-4 text-center transition hover:shadow-md ${selectedRing}`}
-      >
-        <div className="whitespace-pre-line text-lg font-medium leading-tight tracking-wide text-red-500 [writing-mode:vertical-rl] [text-orientation:mixed]">
-          {row.text}
-        </div>
-      </button>
+      <div className="relative mb-4">
+        {alertDot}
+        <button
+          onClick={onOpen}
+          className={`flex h-80 w-full items-center justify-center rounded-md border-2 border-red-400 bg-white p-4 text-center transition hover:shadow-md ${ring}`}
+        >
+          <div className="whitespace-pre-line text-lg font-medium leading-tight tracking-wide text-red-500 [writing-mode:vertical-rl] [text-orientation:mixed]">
+            {row.text}
+          </div>
+        </button>
+      </div>
     )
   }
 
   return <div className="mb-4 h-24 rounded-md border border-zinc-300 bg-[#f5f5f5]" />
 }
 
-function InfoRow({ label, value, good = false }: { label: string; value: string; good?: boolean }) {
+function InfoRow({ label, value, good = false, bad = false }: { label: string; value: string; good?: boolean; bad?: boolean }) {
   return (
     <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3">
       <span className="text-sm text-zinc-500">{label}</span>
-      <span className={`text-sm font-semibold ${good ? 'text-emerald-600' : 'text-zinc-900'}`}>{value}</span>
+      <span className={`text-sm font-semibold ${good ? 'text-emerald-600' : bad ? 'text-red-500' : 'text-zinc-900'}`}>{value}</span>
     </div>
   )
 }
