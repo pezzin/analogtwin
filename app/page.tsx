@@ -506,8 +506,6 @@ function SidebarSubItem({ label, active = false }: { label: string; active?: boo
   )
 }
 
-type RowState = { status: 'on' | 'off' } | { items: number[] }
-
 function PanelRow({
   row,
   state,
