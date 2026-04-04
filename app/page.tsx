@@ -6,6 +6,7 @@ type PanelRowType =
   | { id: string; type: 'main-switch'; label: string; status: 'on' | 'off' }
   | { id: string; type: 'breakers'; label: string; items: number[] }
   | { id: string; type: 'aux-panel'; label: string; text: string }
+  | { id: string; type: 'gauge'; label: string; unit: string; min: number; max: number; value: number }
   | { id: string; type: 'blank' }
 
 const initialRows: PanelRowType[] = [
@@ -29,8 +30,7 @@ const initialRows: PanelRowType[] = [
   { id: 'r13', type: 'breakers', label: 'Linea O', items: [1, 0, 1, 1, 0, 1] },
   { id: 'r14', type: 'breakers', label: 'Linea P', items: [1, 1, 1, 0, 1, 1] },
   { id: 'r15', type: 'breakers', label: 'Linea Q', items: [0, 1, 1, 1, 1, 0] },
-  { id: 'r16', type: 'breakers', label: 'Linea R', items: [1, 0, 1, 1, 1, 1] },
-  { id: 'r17', type: 'breakers', label: 'Linea S', items: [1, 1, 0, 0, 1, 1] },
+  { id: 'gauge-1', type: 'gauge', label: 'Amperometro', unit: 'A', min: 0, max: 500, value: 340 },
   { id: 'blank-5', type: 'blank' },
   { id: 'blank-6', type: 'blank' },
   { id: 'r18', type: 'breakers', label: 'Linea T', items: [1, 1, 1, 1, 0, 0] },
@@ -48,7 +48,7 @@ const initialRows: PanelRowType[] = [
 const columns = [
   ['main-switch', 'r1', 'r2', 'r3', 'r4', 'r5', 'blank-1', 'blank-2'],
   ['r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'blank-3', 'blank-4'],
-  ['r12', 'r13', 'r14', 'r15', 'r16', 'r17', 'blank-5', 'blank-6'],
+  ['r12', 'r13', 'r14', 'r15', 'gauge-1', 'blank-5', 'blank-6'],
   ['r18', 'r19', 'aux-panel', 'blank-7', 'blank-8'],
 ]
 
@@ -118,6 +118,15 @@ export default function AnalogTwinDashboard() {
     }
     if (row.type === 'aux-panel') {
       return { name: row.label, type: 'Pannello ausiliario', status: 'INFO', detail: null }
+    }
+    if (row.type === 'gauge') {
+      const pct = Math.round(((row.value - row.min) / (row.max - row.min)) * 100)
+      return {
+        name: row.label,
+        type: 'Misuratore analogico',
+        status: `${row.value} ${row.unit}`,
+        detail: `Livello: ${pct}%`,
+      }
     }
     return null
   }
@@ -590,6 +599,20 @@ function PanelRow({
     )
   }
 
+  if (row.type === 'gauge') {
+    return (
+      <div className="relative mb-4">
+        {alertDot}
+        <button
+          onClick={onOpen}
+          className={`block w-full rounded-md border border-zinc-500 bg-[#1e1e1e] px-2 py-2 text-left transition hover:shadow-md ${ring}`}
+        >
+          <AnalogGauge value={row.value} min={row.min} max={row.max} unit={row.unit} />
+        </button>
+      </div>
+    )
+  }
+
   return <div className="mb-4 h-24 rounded-md border border-zinc-300 bg-[#f5f5f5]" />
 }
 
@@ -608,5 +631,125 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
       <p className="mt-1 text-lg font-semibold text-zinc-900">{value}</p>
     </div>
+  )
+}
+
+function AnalogGauge({ value, min, max, unit }: { value: number; min: number; max: number; unit: string }) {
+  const cx = 80
+  const cy = 90
+  const r = 58
+
+  const startAngle = 215
+  const endAngle = 325
+  const totalArc = endAngle - startAngle
+
+  const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)))
+  const needleAngleDeg = startAngle + ratio * totalArc
+  const needleAngleRad = (needleAngleDeg * Math.PI) / 180
+  const needleLen = r - 12
+  const needleX = cx + needleLen * Math.cos(needleAngleRad)
+  const needleY = cy + needleLen * Math.sin(needleAngleRad)
+
+  const arcR = r - 3
+
+  function polarX(angleDeg: number, radius: number) {
+    return cx + radius * Math.cos((angleDeg * Math.PI) / 180)
+  }
+  function polarY(angleDeg: number, radius: number) {
+    return cy + radius * Math.sin((angleDeg * Math.PI) / 180)
+  }
+  function arcPath(radius: number, aDeg: number, bDeg: number) {
+    const x1 = polarX(aDeg, radius)
+    const y1 = polarY(aDeg, radius)
+    const x2 = polarX(bDeg, radius)
+    const y2 = polarY(bDeg, radius)
+    const large = bDeg - aDeg > 180 ? 1 : 0
+    return `M ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2}`
+  }
+
+  const redZoneStart = startAngle + 0.8 * totalArc
+
+  const majorTicks = [0, 1, 2, 3, 4, 5].map((i) => {
+    const t = i / 5
+    const angleDeg = startAngle + t * totalArc
+    const label = Math.round(min + t * (max - min))
+    const isRed = label >= min + 0.8 * (max - min)
+    return { angleDeg, label, isRed, t }
+  })
+
+  const minorAngles = [0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.9].map(
+    (t) => startAngle + t * totalArc
+  )
+
+  return (
+    <svg viewBox="0 0 160 130" width="100%" style={{ display: 'block' }}>
+      {/* Outer bezel */}
+      <rect x="1" y="1" width="158" height="128" rx="5" fill="#1a1a1a" stroke="#111" strokeWidth="1" />
+      {/* Inner bezel ring */}
+      <circle cx={cx} cy={cy} r={r + 6} fill="#2d2d2d" />
+      {/* Dial face */}
+      <circle cx={cx} cy={cy} r={r + 2} fill="#f0ede6" />
+
+      {/* Red zone arc */}
+      <path d={arcPath(arcR, redZoneStart, endAngle)} stroke="#dc2626" strokeWidth="5" fill="none" strokeLinecap="round" />
+      {/* Main scale arc */}
+      <path d={arcPath(arcR, startAngle, redZoneStart)} stroke="#1a1a1a" strokeWidth="3" fill="none" strokeLinecap="round" />
+
+      {/* Minor tick marks */}
+      {minorAngles.map((angleDeg, i) => (
+        <line
+          key={i}
+          x1={polarX(angleDeg, arcR - 1)}
+          y1={polarY(angleDeg, arcR - 1)}
+          x2={polarX(angleDeg, arcR - 8)}
+          y2={polarY(angleDeg, arcR - 8)}
+          stroke={angleDeg >= redZoneStart ? '#dc2626' : '#444'}
+          strokeWidth="1"
+        />
+      ))}
+
+      {/* Major tick marks and labels */}
+      {majorTicks.map(({ angleDeg, label, isRed }, i) => (
+        <g key={i}>
+          <line
+            x1={polarX(angleDeg, arcR - 1)}
+            y1={polarY(angleDeg, arcR - 1)}
+            x2={polarX(angleDeg, arcR - 14)}
+            y2={polarY(angleDeg, arcR - 14)}
+            stroke={isRed ? '#dc2626' : '#1a1a1a'}
+            strokeWidth="1.5"
+          />
+          <text
+            x={polarX(angleDeg, arcR - 24)}
+            y={polarY(angleDeg, arcR - 24) + 2.5}
+            textAnchor="middle"
+            fontSize="7"
+            fill={isRed ? '#dc2626' : '#222'}
+            fontFamily="sans-serif"
+            fontWeight="500"
+          >
+            {label}
+          </text>
+        </g>
+      ))}
+
+      {/* Unit label */}
+      <text x={cx} y={cy - 24} textAnchor="middle" fontSize="15" fontWeight="bold" fill="#111" fontFamily="sans-serif">
+        {unit}
+      </text>
+
+      {/* Needle shadow */}
+      <line x1={cx + 1} y1={cy + 1} x2={needleX + 1} y2={needleY + 1} stroke="rgba(0,0,0,0.15)" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Needle */}
+      <line x1={cx} y1={cy} x2={needleX} y2={needleY} stroke="#c0392b" strokeWidth="2" strokeLinecap="round" />
+      {/* Pivot */}
+      <circle cx={cx} cy={cy} r="5" fill="#2a2a2a" />
+      <circle cx={cx} cy={cy} r="2.5" fill="#888" />
+
+      {/* Bottom info bar */}
+      <rect x="1" y="121" width="158" height="8" rx="0" fill="#111" />
+      <text x={cx - 15} y="127" fontSize="5" fill="#666" fontFamily="monospace">CE</text>
+      <text x={cx + 2} y="127" fontSize="5" fill="#555" fontFamily="monospace">Q~15L • 50/60Hz</text>
+    </svg>
   )
 }
