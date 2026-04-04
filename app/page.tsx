@@ -162,7 +162,7 @@ export default function AnalogTwinDashboard() {
                         </div>
 
                         <div className="border-x border-zinc-400 px-4 py-4">
-                          {column.rows.map((row) => (
+                          {(column.rows as PanelRowType[]).map((row) => (
                             <PanelRow key={row.id} row={row} />
                           ))}
                         </div>
