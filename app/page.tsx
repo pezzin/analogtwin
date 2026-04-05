@@ -646,7 +646,7 @@ export default function AnalogTwinDashboard() {
               {activeAlerts > 0 && (
                 <div className={`mt-5 rounded-2xl border p-5 shadow-sm ${activeViolations > 0 ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
                   <p className={`text-sm font-semibold ${activeViolations > 0 ? 'text-red-800' : 'text-amber-800'}`}>
-                    {activeViolations > 0 ? `⚠ ${activeViolations} soglia superata` : `${activeAlerts} allarme${activeAlerts > 1 ? 'i' : ''} configurato${activeAlerts > 1 ? 'i' : ''}`}
+                    {activeViolations > 0 ? `⚠ ${activeViolations} soglia superata` : activeAlerts > 1 ? `${activeAlerts} allarmi configurati` : `${activeAlerts} allarme configurato`}
                   </p>
                   <div className="mt-3 space-y-2">
                     {Array.from(alertedIds).map((id) => {
