@@ -63,7 +63,7 @@ const initialLogs = [
   '10:34 - Allarme storico reset',
 ]
 
-type RowState = { status: 'on' | 'off' } | { items: number[] }
+type RowState = { status: 'on' | 'off' } | { items: number[] } | { value: number }
 type StatesMap = Record<string, RowState>
 
 type GaugeAlert = { condition: 'above' | 'below'; threshold: number }
@@ -178,7 +178,9 @@ export default function AnalogTwinDashboard() {
     const row = rowMap[id]
     const alert = gaugeAlerts[id]
     if (!alert || !row || row.type !== 'gauge') return false
-    return alert.condition === 'above' ? row.value > alert.threshold : row.value < alert.threshold
+    const state = states[id] as { value: number } | undefined
+    const currentValue = state?.value ?? row.value
+    return alert.condition === 'above' ? currentValue > alert.threshold : currentValue < alert.threshold
   }
 
   function getComponentInfo(id: string) {
@@ -204,11 +206,13 @@ export default function AnalogTwinDashboard() {
       return { name: row.label, type: 'Pannello ausiliario', status: 'INFO', detail: null }
     }
     if (row.type === 'gauge') {
-      const pct = Math.round(((row.value - row.min) / (row.max - row.min)) * 100)
+      const gaugeState = state as { value: number } | undefined
+      const currentValue = gaugeState?.value ?? row.value
+      const pct = Math.round(((currentValue - row.min) / (row.max - row.min)) * 100)
       return {
         name: row.label,
         type: 'Misuratore analogico',
-        status: `${row.value} ${row.unit}`,
+        status: `${currentValue} ${row.unit}`,
         detail: `Livello: ${pct}%`,
       }
     }
@@ -269,7 +273,7 @@ export default function AnalogTwinDashboard() {
     })
     }
     checkAndFire()
-  }, [gaugeAlerts, rowMap])
+  }, [gaugeAlerts, rowMap, states])
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-100">
@@ -782,7 +786,7 @@ function PanelRow({
           onClick={onOpen}
           className={`block w-full rounded-md border border-zinc-500 bg-[#1e1e1e] px-2 py-2 text-left transition hover:shadow-md ${ring}`}
         >
-          <AnalogGauge value={row.value} min={row.min} max={row.max} unit={row.unit} />
+          <AnalogGauge value={(state as { value: number } | undefined)?.value ?? row.value} min={row.min} max={row.max} unit={row.unit} />
         </button>
       </div>
     )
