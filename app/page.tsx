@@ -236,11 +236,13 @@ export default function AnalogTwinDashboard() {
         firedAlerts.current.add(id)
         const row = rowMap[id] as { type: 'gauge'; label: string; unit: string; value: number }
         const alert = gaugeAlerts[id]
+        const liveState = states[id] as { value: number } | undefined
+        const currentValue = liveState?.value ?? row.value
         const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        setLogs((prev) => [`${now} - ALLARME: ${row.label} → ${row.value} ${row.unit}`, ...prev].slice(0, 20))
+        setLogs((prev) => [`${now} - ALLARME: ${row.label} → ${currentValue} ${row.unit}`, ...prev].slice(0, 20))
         createClient().from('alert_history').insert({
           component_id: id,
-          value: { value: row.value, unit: row.unit },
+          value: { value: currentValue, unit: row.unit },
           condition: alert.condition,
           threshold: alert.threshold,
           notified_emails: recipients,
@@ -258,7 +260,7 @@ export default function AnalogTwinDashboard() {
                 <p><strong>${row.label}</strong> ha superato la soglia configurata.</p>
                 <table style="width:100%;border-collapse:collapse;margin-top:16px">
                   <tr><td style="padding:8px;color:#71717a">Componente</td><td style="padding:8px;font-weight:600">${row.label}</td></tr>
-                  <tr style="background:#f4f4f5"><td style="padding:8px;color:#71717a">Valore attuale</td><td style="padding:8px;font-weight:600">${row.value} ${row.unit}</td></tr>
+                  <tr style="background:#f4f4f5"><td style="padding:8px;color:#71717a">Valore attuale</td><td style="padding:8px;font-weight:600">${currentValue} ${row.unit}</td></tr>
                   <tr><td style="padding:8px;color:#71717a">Condizione</td><td style="padding:8px;font-weight:600">${alert.condition === 'above' ? 'Sopra' : 'Sotto'} ${alert.threshold} ${row.unit}</td></tr>
                   <tr style="background:#f4f4f5"><td style="padding:8px;color:#71717a">Orario</td><td style="padding:8px;font-weight:600">${now}</td></tr>
                 </table>
@@ -266,7 +268,9 @@ export default function AnalogTwinDashboard() {
               </div>
             `,
           }),
-        })
+        }).then((res) => {
+          if (!res.ok) res.text().then((t) => console.error('Alert send failed:', t))
+        }).catch((e) => console.error('Alert fetch error:', e))
       } else if (!violating) {
         firedAlerts.current.delete(id)
       }
