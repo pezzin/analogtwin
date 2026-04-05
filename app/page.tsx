@@ -319,38 +319,19 @@ export default function AnalogTwinDashboard() {
               </div>
             </div>
 
-            {/* Fake camera image */}
+            {/* Camera image */}
             <div className="relative h-[400px] w-full overflow-hidden rounded-xl bg-zinc-800">
-              <div className="absolute inset-0 flex items-center justify-center">
-                {/* Simulated panel view */}
-                <div className="grid w-[560px] grid-cols-4 gap-3 opacity-80">
-                  {Array.from({ length: 4 }).map((_, ci) => (
-                    <div key={ci} className="rounded border border-zinc-600 bg-zinc-700 p-2">
-                      <div className="mb-2 h-2 rounded bg-emerald-600 opacity-70" />
-                      {Array.from({ length: 5 }).map((_, ri) => (
-                        <div key={ri} className="mb-1.5 flex gap-1">
-                          {Array.from({ length: 6 }).map((_, bi) => (
-                            <div
-                              key={bi}
-                              className={`h-4 flex-1 rounded-sm ${Math.random() > 0.3 ? 'bg-emerald-500' : 'bg-zinc-500'} opacity-90`}
-                            />
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <img
+                src="/foto_quadro_stanza.png"
+                alt="Live camera feed"
+                className="h-full w-full object-cover"
+              />
               {/* Camera overlay */}
               <div className="pointer-events-none absolute inset-0">
                 <div className="absolute top-3 left-3 text-[10px] font-mono text-emerald-400 opacity-70">
-                  CAM-01 • 10:42:18 • 1920×1080
+                  CAM-01 • AI VISION ACTIVE
                 </div>
                 <div className="absolute top-3 right-3 h-3 w-3 rounded-full border border-red-500 bg-red-500 opacity-80 animate-pulse" />
-                <div className="absolute bottom-3 left-3 text-[10px] font-mono text-zinc-400">
-                  QUADRO BT – LINEA 1 • AI VISION ACTIVE
-                </div>
-                {/* Corner marks */}
                 <div className="absolute top-6 left-6 h-5 w-5 border-t-2 border-l-2 border-emerald-500 opacity-50" />
                 <div className="absolute top-6 right-6 h-5 w-5 border-t-2 border-r-2 border-emerald-500 opacity-50" />
                 <div className="absolute bottom-6 left-6 h-5 w-5 border-b-2 border-l-2 border-emerald-500 opacity-50" />
