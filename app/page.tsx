@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/utils/supabase/client'
 
 type PanelRowType =
   | { id: string; type: 'main-switch'; label: string; status: 'on' | 'off' }
@@ -77,7 +78,8 @@ function buildInitialStates(rows: PanelRowType[]): StatesMap {
 }
 
 export default function AnalogTwinDashboard() {
-  const [states] = useState<StatesMap>(() => buildInitialStates(initialRows))
+  const [states, setStates] = useState<StatesMap>(() => buildInitialStates(initialRows))
+  const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [popupId, setPopupId] = useState<string | null>(null)
   const [alertedIds, setAlertedIds] = useState<Set<string>>(new Set())
@@ -88,27 +90,88 @@ export default function AnalogTwinDashboard() {
 
   const rowMap = Object.fromEntries(initialRows.map((r) => [r.id, r]))
 
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function loadData() {
+      // Latest reading per component
+      const { data: readingRows } = await supabase
+        .from('readings')
+        .select('component_id, value')
+        .order('captured_at', { ascending: false })
+        .limit(200)
+
+      const map: StatesMap = {}
+      for (const row of readingRows ?? []) {
+        if (!map[row.component_id]) map[row.component_id] = row.value
+      }
+      setStates(map)
+
+      // Alert configs
+      const { data: alertRows } = await supabase
+        .from('alert_configs')
+        .select('*')
+        .eq('enabled', true)
+
+      const newAlertedIds = new Set<string>()
+      const newGaugeAlerts: Record<string, GaugeAlert> = {}
+      for (const row of alertRows ?? []) {
+        if (row.type === 'on-change') newAlertedIds.add(row.component_id)
+        if (row.type === 'threshold') newGaugeAlerts[row.component_id] = { condition: row.condition, threshold: row.threshold }
+      }
+      setAlertedIds(newAlertedIds)
+      setGaugeAlerts(newGaugeAlerts)
+      setLoading(false)
+    }
+
+    loadData()
+
+    // Realtime: update state when a new reading arrives
+    const channel = supabase
+      .channel('readings-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'readings' }, (payload) => {
+        const { component_id, value } = payload.new as { component_id: string; value: RowState }
+        setStates((prev) => ({ ...prev, [component_id]: value }))
+        const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        const row = rowMap[component_id]
+        if (row && row.type !== 'blank') {
+          setLogs((prev) => [`${now} - ${row.label ?? component_id} → aggiornato`, ...prev].slice(0, 20))
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
   function openPopup(id: string) {
     setSelectedId(id)
     setPopupId(id)
   }
 
-  function toggleAlert(id: string) {
-    setAlertedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  async function toggleAlert(id: string) {
+    const supabase = createClient()
+    const isActive = alertedIds.has(id)
+    if (isActive) {
+      setAlertedIds((prev) => { const next = new Set(prev); next.delete(id); return next })
+      await supabase.from('alert_configs').delete().eq('component_id', id).eq('type', 'on-change')
+    } else {
+      setAlertedIds((prev) => new Set([...prev, id]))
+      await supabase.from('alert_configs').upsert({ component_id: id, type: 'on-change', enabled: true })
+    }
   }
 
-  function setGaugeAlert(id: string, alert: GaugeAlert | null) {
-    setGaugeAlerts((prev) => {
-      const next = { ...prev }
-      if (alert === null) delete next[id]
-      else next[id] = alert
-      return next
-    })
+  async function setGaugeAlert(id: string, alert: GaugeAlert | null) {
+    const supabase = createClient()
+    if (alert === null) {
+      setGaugeAlerts((prev) => { const next = { ...prev }; delete next[id]; return next })
+      await supabase.from('alert_configs').delete().eq('component_id', id).eq('type', 'threshold')
+    } else {
+      setGaugeAlerts((prev) => ({ ...prev, [id]: alert }))
+      await supabase.from('alert_configs').upsert({
+        component_id: id, type: 'threshold',
+        condition: alert.condition, threshold: alert.threshold, enabled: true,
+      })
+    }
   }
 
   function isGaugeInViolation(id: string): boolean {
@@ -157,7 +220,10 @@ export default function AnalogTwinDashboard() {
   const activeViolations = Object.keys(gaugeAlerts).filter(isGaugeInViolation).length
 
   useEffect(() => {
-    const recipients: string[] = JSON.parse(localStorage.getItem('analogtwin_recipients') ?? '[]')
+    async function checkAndFire() {
+    const supabase = createClient()
+    const { data: recipientRows } = await supabase.from('recipients').select('email')
+    const recipients = (recipientRows ?? []).map((r: { email: string }) => r.email)
     if (recipients.length === 0) return
 
     Object.keys(gaugeAlerts).forEach((id) => {
@@ -168,6 +234,14 @@ export default function AnalogTwinDashboard() {
         const alert = gaugeAlerts[id]
         const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         setLogs((prev) => [`${now} - ALLARME: ${row.label} → ${row.value} ${row.unit}`, ...prev].slice(0, 20))
+        createClient().from('alert_history').insert({
+          component_id: id,
+          value: { value: row.value, unit: row.unit },
+          condition: alert.condition,
+          threshold: alert.threshold,
+          notified_emails: recipients,
+        }).then()
+
         fetch('/api/send-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -193,7 +267,18 @@ export default function AnalogTwinDashboard() {
         firedAlerts.current.delete(id)
       }
     })
+    }
+    checkAndFire()
   }, [gaugeAlerts, rowMap])
+
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-100">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-zinc-300 border-t-zinc-900" />
+        <p className="text-sm text-zinc-500">Caricamento dati dal DB...</p>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">

@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-
-const STORAGE_KEY = 'analogtwin_recipients'
+import { createClient } from '@/utils/supabase/client'
 
 export default function SettingsPage() {
-  const [recipients, setRecipients] = useState<string[]>([])
+  const [recipients, setRecipients] = useState<{ id: number; email: string }[]>([])
   const [newEmail, setNewEmail] = useState('')
   const [emailError, setEmailError] = useState('')
   const [smtpStatus, setSmtpStatus] = useState<{ configured: boolean; host: string | null; from: string | null } | null>(null)
@@ -14,36 +13,28 @@ export default function SettingsPage() {
   const [testError, setTestError] = useState('')
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) setRecipients(JSON.parse(stored))
-
-    fetch('/api/smtp-status')
-      .then((r) => r.json())
-      .then(setSmtpStatus)
+    const supabase = createClient()
+    supabase.from('recipients').select('*').order('id').then(({ data }) => {
+      if (data) setRecipients(data)
+    })
+    fetch('/api/smtp-status').then((r) => r.json()).then(setSmtpStatus)
   }, [])
 
-  function saveRecipients(next: string[]) {
-    setRecipients(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
-
-  function addEmail() {
+  async function addEmail() {
     const email = newEmail.trim().toLowerCase()
-    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      setEmailError('Email non valida')
-      return
-    }
-    if (recipients.includes(email)) {
-      setEmailError('Email già presente')
-      return
-    }
-    saveRecipients([...recipients, email])
+    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { setEmailError('Email non valida'); return }
+    const supabase = createClient()
+    const { data, error } = await supabase.from('recipients').insert({ email }).select().single()
+    if (error) { setEmailError(error.message); return }
+    setRecipients((prev) => [...prev, data])
     setNewEmail('')
     setEmailError('')
   }
 
-  function removeEmail(email: string) {
-    saveRecipients(recipients.filter((r) => r !== email))
+  async function removeEmail(id: number) {
+    const supabase = createClient()
+    await supabase.from('recipients').delete().eq('id', id)
+    setRecipients((prev) => prev.filter((r) => r.id !== id))
   }
 
   async function sendTestEmail() {
@@ -51,6 +42,7 @@ export default function SettingsPage() {
       setTestError('Aggiungi almeno un destinatario prima di testare.')
       return
     }
+    const emailList = recipients.map((r) => r.email)
     setTestStatus('sending')
     setTestError('')
     try {
@@ -58,7 +50,7 @@ export default function SettingsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          recipients,
+          recipients: emailList,
           subject: '[AnalogTwin] Test notifica allarme',
           body: `
             <div style="font-family:sans-serif;max-width:480px">
@@ -164,15 +156,10 @@ export default function SettingsPage() {
               <p className="text-sm text-zinc-400">Nessun destinatario configurato.</p>
             ) : (
               <ul className="space-y-2">
-                {recipients.map((email) => (
-                  <li key={email} className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
-                    <span className="text-sm text-zinc-800">{email}</span>
-                    <button
-                      onClick={() => removeEmail(email)}
-                      className="text-xs text-red-500 hover:text-red-700"
-                    >
-                      Rimuovi
-                    </button>
+                {recipients.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
+                    <span className="text-sm text-zinc-800">{r.email}</span>
+                    <button onClick={() => removeEmail(r.id)} className="text-xs text-red-500 hover:text-red-700">Rimuovi</button>
                   </li>
                 ))}
               </ul>
