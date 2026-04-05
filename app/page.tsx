@@ -225,22 +225,37 @@ export default function AnalogTwinDashboard() {
 
   useEffect(() => {
     async function checkAndFire() {
-    const supabase = createClient()
-    const { data: recipientRows } = await supabase.from('recipients').select('email')
-    const recipients = (recipientRows ?? []).map((r: { email: string }) => r.email)
-    if (recipients.length === 0) return
+      // Collect ids to fire and mark them synchronously BEFORE any await
+      // This prevents race conditions when the effect runs twice concurrently
+      const toFire: string[] = []
+      Object.keys(gaugeAlerts).forEach((id) => {
+        const violating = isGaugeInViolation(id)
+        if (violating && !firedAlerts.current.has(id)) {
+          firedAlerts.current.add(id) // mark immediately, before any await
+          toFire.push(id)
+        } else if (!violating) {
+          firedAlerts.current.delete(id) // reset so it can fire again next time
+        }
+      })
 
-    Object.keys(gaugeAlerts).forEach((id) => {
-      const violating = isGaugeInViolation(id)
-      if (violating && !firedAlerts.current.has(id)) {
-        firedAlerts.current.add(id)
+      if (toFire.length === 0) return
+
+      // Now do async work
+      const supabase = createClient()
+      const { data: recipientRows } = await supabase.from('recipients').select('email')
+      const recipients = (recipientRows ?? []).map((r: { email: string }) => r.email)
+      if (recipients.length === 0) return
+
+      for (const id of toFire) {
         const row = rowMap[id] as { type: 'gauge'; label: string; unit: string; value: number }
         const alert = gaugeAlerts[id]
         const liveState = states[id] as { value: number } | undefined
         const currentValue = liveState?.value ?? row.value
         const now = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
         setLogs((prev) => [`${now} - ALLARME: ${row.label} → ${currentValue} ${row.unit}`, ...prev].slice(0, 20))
-        createClient().from('alert_history').insert({
+
+        supabase.from('alert_history').insert({
           component_id: id,
           value: { value: currentValue, unit: row.unit },
           condition: alert.condition,
@@ -271,10 +286,7 @@ export default function AnalogTwinDashboard() {
         }).then((res) => {
           if (!res.ok) res.text().then((t) => console.error('Alert send failed:', t))
         }).catch((e) => console.error('Alert fetch error:', e))
-      } else if (!violating) {
-        firedAlerts.current.delete(id)
       }
-    })
     }
     checkAndFire()
   }, [gaugeAlerts, rowMap, states])
