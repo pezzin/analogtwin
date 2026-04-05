@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const [smtpStatus, setSmtpStatus] = useState<{ configured: boolean; host: string | null; from: string | null } | null>(null)
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
   const [testError, setTestError] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -77,16 +78,27 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
       <div className="flex min-h-screen">
-        <aside className="w-72 border-r border-zinc-800 bg-slate-900 text-white">
+
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-20 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        )}
+
+        <aside className={`
+          fixed inset-y-0 left-0 z-30 w-72 transform transition-transform duration-300 ease-in-out
+          lg:relative lg:translate-x-0
+          border-r border-zinc-800 bg-slate-900 text-white
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
           <div className="border-b border-slate-700 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg font-semibold">
-                AT
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg font-semibold">AT</div>
+                <div>
+                  <p className="text-xl font-semibold leading-tight">Analog Twin</p>
+                  <p className="text-sm text-slate-300">Control Dashboard</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xl font-semibold leading-tight">Analog Twin</p>
-                <p className="text-sm text-slate-300">Control Dashboard</p>
-              </div>
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white text-2xl leading-none">×</button>
             </div>
           </div>
 
@@ -100,9 +112,21 @@ export default function SettingsPage() {
           </nav>
         </aside>
 
-        <main className="flex-1 p-10 max-w-3xl">
-          <h1 className="text-3xl font-semibold mb-1">Settings</h1>
-          <p className="text-sm text-zinc-500 mb-10">Configurazione notifiche e SMTP</p>
+        <main className="flex-1 min-w-0">
+          <header className="flex items-center gap-3 border-b border-zinc-200 bg-white px-4 sm:px-8 py-4">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden rounded-lg border border-zinc-200 p-2 text-zinc-600 hover:bg-zinc-50"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-lg font-semibold text-zinc-900">Settings</h1>
+          </header>
+
+          <div className="p-4 sm:p-10 max-w-3xl">
+          <p className="text-sm text-zinc-500 mb-8">Configurazione notifiche e SMTP</p>
 
           {/* SMTP status */}
           <section className="mb-8 rounded-2xl border border-zinc-300 bg-white p-6 shadow-sm">
@@ -188,6 +212,7 @@ export default function SettingsPage() {
               <p className="mt-3 text-sm text-red-500">{testError}</p>
             )}
           </section>
+          </div>
         </main>
       </div>
     </div>

@@ -85,6 +85,7 @@ export default function AnalogTwinDashboard() {
   const [alertedIds, setAlertedIds] = useState<Set<string>>(new Set())
   const [gaugeAlerts, setGaugeAlerts] = useState<Record<string, GaugeAlert>>({})
   const [liveImageOpen, setLiveImageOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [logs, setLogs] = useState<string[]>(initialLogs)
   const firedAlerts = useRef<Set<string>>(new Set())
 
@@ -309,7 +310,7 @@ export default function AnalogTwinDashboard() {
           onClick={() => setLiveImageOpen(false)}
         >
           <div
-            className="relative w-[720px] rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+            className="relative mx-4 w-full max-w-2xl rounded-2xl border border-zinc-700 bg-zinc-900 p-4 sm:p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -332,7 +333,7 @@ export default function AnalogTwinDashboard() {
             </div>
 
             {/* Camera image */}
-            <div className="relative h-[400px] w-full overflow-hidden rounded-xl bg-zinc-800">
+            <div className="relative h-[220px] sm:h-[400px] w-full overflow-hidden rounded-xl bg-zinc-800">
               <img
                 src="/foto_quadro_stanza.png"
                 alt="Live camera feed"
@@ -447,16 +448,38 @@ export default function AnalogTwinDashboard() {
       })()}
 
       <div className="flex min-h-screen">
-        <aside className="w-72 border-r border-zinc-800 bg-slate-900 text-white">
+
+        {/* Mobile sidebar backdrop */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-20 bg-black/50 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        <aside className={`
+          fixed inset-y-0 left-0 z-30 w-72 transform transition-transform duration-300 ease-in-out
+          lg:relative lg:translate-x-0 lg:block
+          border-r border-zinc-800 bg-slate-900 text-white
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
           <div className="border-b border-slate-700 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg font-semibold">
-                AT
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg font-semibold">
+                  AT
+                </div>
+                <div>
+                  <p className="text-xl font-semibold leading-tight">Analog Twin</p>
+                  <p className="text-sm text-slate-300">Control Dashboard</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xl font-semibold leading-tight">Analog Twin</p>
-                <p className="text-sm text-slate-300">Control Dashboard</p>
-              </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden text-slate-400 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
             </div>
           </div>
 
@@ -481,33 +504,44 @@ export default function AnalogTwinDashboard() {
           </nav>
         </aside>
 
-        <main className="flex-1 overflow-hidden">
-          <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-8 py-5">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-semibold tracking-tight">QUADRO BT - LINEA 1</h1>
-                <span className="rounded-md bg-emerald-500 px-3 py-1 text-sm font-semibold text-white">STATUS: OK</span>
+        <main className="flex-1 min-w-0 overflow-hidden">
+          <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 sm:px-8 py-4 sm:py-5 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden flex-shrink-0 rounded-lg border border-zinc-200 p-2 text-zinc-600 hover:bg-zinc-50"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg sm:text-3xl font-semibold tracking-tight truncate">QUADRO BT - LINEA 1</h1>
+                  <span className="rounded-md bg-emerald-500 px-2 py-0.5 text-xs sm:text-sm font-semibold text-white flex-shrink-0">OK</span>
+                </div>
+                <p className="mt-0.5 text-xs sm:text-sm text-zinc-500">Updated 2s ago</p>
               </div>
-              <p className="mt-1 text-sm text-zinc-500">Updated 2s ago</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={() => setLiveImageOpen(true)}
-                className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 transition"
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs sm:text-sm font-medium hover:bg-zinc-50 transition"
               >
                 <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                Check live image
+                <span className="hidden sm:inline">Check live image</span>
+                <span className="sm:hidden">Live</span>
               </button>
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500">
-                <span className="inline-block h-3 w-3 rounded-full bg-emerald-500" />
-                Online
+              <div className="flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-2 sm:px-3 py-2 text-xs sm:text-sm text-zinc-500">
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <span className="hidden sm:inline">Online</span>
               </div>
             </div>
           </header>
 
-          <div className="grid h-[calc(100vh-85px)] grid-cols-[1fr_340px] gap-0">
-            <section className="overflow-auto p-8">
+          <div className="flex flex-col lg:grid lg:h-[calc(100vh-73px)] lg:grid-cols-[1fr_340px] gap-0 overflow-y-auto lg:overflow-hidden">
+            <section className="overflow-auto p-4 sm:p-8">
               <div className="rounded-2xl border border-zinc-300 bg-white p-6 shadow-sm">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
@@ -574,7 +608,7 @@ export default function AnalogTwinDashboard() {
               </div>
             </section>
 
-            <aside className="border-l border-zinc-200 bg-white p-6 overflow-y-auto">
+            <aside className="border-t lg:border-t-0 lg:border-l border-zinc-200 bg-white p-4 sm:p-6 overflow-y-auto">
               <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-5 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Componente selezionato</p>
                 {selected ? (
