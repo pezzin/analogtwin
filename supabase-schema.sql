@@ -50,6 +50,21 @@ create table alert_history (
 -- Enable Realtime on readings so the dashboard updates live
 alter publication supabase_realtime add table readings;
 
+-- RLS policies: the app uses its own password auth (not Supabase Auth),
+-- so we grant the anon role full access to all tables.
+-- Security is enforced at the application layer (APP_PASSWORD + session cookie).
+alter table components   enable row level security;
+alter table readings     enable row level security;
+alter table alert_configs enable row level security;
+alter table recipients   enable row level security;
+alter table alert_history enable row level security;
+
+create policy "anon_all" on components    for all to anon using (true) with check (true);
+create policy "anon_all" on readings      for all to anon using (true) with check (true);
+create policy "anon_all" on alert_configs for all to anon using (true) with check (true);
+create policy "anon_all" on recipients    for all to anon using (true) with check (true);
+create policy "anon_all" on alert_history for all to anon using (true) with check (true);
+
 -- Seed components (matching the current mock data)
 insert into components (id, type, label, config, col_index, row_index) values
   ('main-switch', 'main-switch', 'Generale Q1', '{}', 0, 0),
