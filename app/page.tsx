@@ -120,6 +120,15 @@ export default function AnalogTwinDashboard() {
         if (row.type === 'on-change') newAlertedIds.add(row.component_id)
         if (row.type === 'threshold') newGaugeAlerts[row.component_id] = { condition: row.condition, threshold: row.threshold }
       }
+
+      // Pre-populate firedAlerts for gauges that are already violating on load,
+      // so we don't re-send an alert email just because the page was refreshed.
+      for (const [id, alert] of Object.entries(newGaugeAlerts)) {
+        const currentValue = (map[id] as { value: number } | undefined)?.value ?? (rowMap[id] as { value?: number }).value
+        const violating = alert.condition === 'above' ? (currentValue ?? 0) > alert.threshold : (currentValue ?? 0) < alert.threshold
+        if (violating) firedAlerts.current.add(id)
+      }
+
       setAlertedIds(newAlertedIds)
       setGaugeAlerts(newGaugeAlerts)
       setLoading(false)
